@@ -81,7 +81,7 @@ def make_tempfile(basename, step, outfolder):
 	tmpfile.close()
 	return tmpname
 
-def getlibsize(logfile, infile,multi_bed,uniq_bed,paired_end,debug):
+def getlibsize(logfile, infile,multi_bed,uniq_bed,paired_end,debug, tempfolder):
 	if logfile:
 		STAR_logfile=open(logfile,'r')
 		for line in STAR_logfile:
@@ -96,7 +96,7 @@ def getlibsize(logfile, infile,multi_bed,uniq_bed,paired_end,debug):
 		STAR_logfile.close()
 	else:
 		count_temp = infile + "libsize"
-		linecountcommandlist = ["samtools", "view", infile, "|", "cut", "-f1", "|", "sort", "-k1,1", "|" , "uniq","|", "wc -l", ">", count_temp]
+		linecountcommandlist = ["samtools", "view", infile, "|", "cut", "-f1", "|", "sort", "-k1,1", "-T", tempfolder, "|" , "uniq","|", "wc -l", ">", count_temp]
 		linecountcommand = " ".join(linecountcommandlist)
 		sp.check_call(["/bin/sh","-c",linecountcommand])
 		with open(count_temp, 'r') as count_file:
@@ -458,7 +458,7 @@ def find_uniq(combined_tempfile, first_tempfile,unique_tempfile, multi_tempfile,
 		os.unlink(combined_tempfile)
 		os.unlink(first_tempfile)
 
-def match_reads(R1, R2, strandedness, matched_file,unmatched_file1,unmatched_file2,debug):
+def match_reads(R1, R2, strandedness, matched_file,unmatched_file1,unmatched_file2, debug, tempfolder):
 	#match  read1 and read2 if within 2kb of each other on same strand
 	#add rough location to read_ID to reduce combinations for join
 	rounded_1_v1 = R1 + "_rounded_v1"
@@ -481,15 +481,17 @@ def match_reads(R1, R2, strandedness, matched_file,unmatched_file1,unmatched_fil
 	roundcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $2/10000}'""", """OFMT='%.f'""", R2, ">", rounded_2_v1]
 	roundcommand=" ".join(roundcommand_list)
 	sp.check_call(["/bin/sh","-c",roundcommand])
+
 	#create new read to join on that is read/chro
-	newreadcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $4 "/" $1 "/" $11 "/" $6}'""", rounded_1_v1,"|", "sort -k12", ">", newread_1_v1]
+	newreadcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $4 "/" $1 "/" $11 "/" $6}'""", rounded_1_v1,"|", "sort -k12 -T ", tempfolder, " >", newread_1_v1]
 	newreadcommand=" ".join(newreadcommand_list)
 	sp.check_call(["/bin/sh","-c",newreadcommand])
-	newreadcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $4 "/" $1 "/" $11 "/" $6}'""",  rounded_2_v1,"|", "sort -k12", ">", newread_2_v1]
+	newreadcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $4 "/" $1 "/" $11 "/" $6}'""",  rounded_2_v1,"|", "sort -k12 -T ", tempfolder, " >", newread_2_v1]
 	newreadcommand=" ".join(newreadcommand_list)
 	sp.check_call(["/bin/sh","-c",newreadcommand])
+
 	#use join not awk because awk only takes 1st hit with shared value to find match
-	joincommand_list = ["join", "-j", "12", "-t", "$'\\t'", "-o", "1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,1.10,2.1,2.2,2.3,2.4,2.5,2.6,2.7,2.8,2.9,2.10", newread_1_v1, newread_2_v1, ">" , matched_file_10k_v1]
+	joincommand_list = ["join", "-j", "12", "-t", '"$(printf \'\t\')"', "-o", "1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,1.10,2.1,2.2,2.3,2.4,2.5,2.6,2.7,2.8,2.9,2.10", newread_1_v1, newread_2_v1, ">" , matched_file_10k_v1]
 	joincommand=" ".join(joincommand_list)
 	sp.check_call(["/bin/sh","-c",joincommand])
 	pos_strand_2 =  """($3 -$12 <= 500 && $3 -$12 >= 0 && $2 >= $12 && $6=="+" && $5!=1000 && $15!=1000)""" #insert size < 500 & end of read1 will be after beginning of read 2 & start of read1 will be after beginning of read2
@@ -533,7 +535,7 @@ def match_reads(R1, R2, strandedness, matched_file,unmatched_file1,unmatched_fil
 	newreadcommand=" ".join(newreadcommand_list)
 	sp.check_call(["/bin/sh","-c",newreadcommand])
 	#use join not awk because awk only takes 1st hit with shared value to find match
-	joincommand_list = ["join", "-j", "12", "-t", "$'\\t'", "-o", "1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,1.10,2.1,2.2,2.3,2.4,2.5,2.6,2.7,2.8,2.9,2.10", newread_1_v2, newread_2_v2, ">" , matched_file_10k_v2]
+	joincommand_list = ["join", "-j", "12", "-t", '"$(printf \'\t\')"', "-o", "1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,1.10,2.1,2.2,2.3,2.4,2.5,2.6,2.7,2.8,2.9,2.10", newread_1_v2, newread_2_v2, ">" , matched_file_10k_v2]
 	joincommand=" ".join(joincommand_list)
 	sp.check_call(["/bin/sh","-c",joincommand])
 	awk_inout_v2 = [matched_file_10k_v2,  ">",  matched_file_v2]
@@ -1635,7 +1637,7 @@ def main(**kwargs):
 		label_files(unique_tempfile1, unique_bed, "uniq",debug)
 		label_files(multi_tempfile1, multi_bed, "multi",debug)
 
-		aligned_libsize = getlibsize(logfile, bamfile,multi_bed,unique_bed,paired_end,debug)
+		aligned_libsize = getlibsize(logfile, bamfile,multi_bed,unique_bed,paired_end,debug, tempfolder)
 
 	if paired_end:
 		#intersect bam files with TE bed files
@@ -1740,7 +1742,7 @@ def main(**kwargs):
 		paired_unmatched1= make_tempfile(basename,"paired_unmatched_1", tempfolder)
 		paired_unmatched2 = make_tempfile(basename,"paired_unmatched_2", tempfolder)
 		paired_matched_tempfile = make_tempfile(basename,"paired_matched", tempfolder)
-		match_reads(paired_tempfile1_ulabeled,paired_tempfile2_ulabeled,strandedness,paired_matched_tempfile,paired_unmatched1, paired_unmatched2,debug) #match pairs between paired files
+		match_reads(paired_tempfile1_ulabeled,paired_tempfile2_ulabeled,strandedness,paired_matched_tempfile,paired_unmatched1, paired_unmatched2, debug, tempfolder) #match pairs between paired files
 
 		#sort matched
 		matched_tempfile_sorted = make_tempfile(basename,"paired_matched_sorted", tempfolder)
