@@ -1637,7 +1637,7 @@ def main(**kwargs):
 		label_files(unique_tempfile1, unique_bed, "uniq",debug)
 		label_files(multi_tempfile1, multi_bed, "multi",debug)
 
-		aligned_libsize = getlibsize(logfile, bamfile,multi_bed,unique_bed,paired_end,debug, tempfolder)
+		aligned_libsize = getlibsize(logfile, bamfile, multi_bed, unique_bed, paired_end, debug, tempfolder)
 
 	if paired_end:
 		#intersect bam files with TE bed files
@@ -1792,7 +1792,7 @@ def main(**kwargs):
 			print("Identifying multi read pairs with one end unique"+ str(datetime.now())  + "\n",file = sys.stderr)
 		find_paired_uniq(multi_bed_pre,paired_uniq_tempfile,multi_bed,unique_bed,debug)
 
-		aligned_libsize = getlibsize(logfile, bamfile,multi_bed,unique_bed,paired_end,debug)
+		aligned_libsize = getlibsize(logfile, bamfile, multi_bed, unique_bed, paired_end, debug, tempfolder)
 
 	######## COUNT READ(S) #########################
 	read_multidict={}  #dictionary to store TE_IDs for each read alignment
