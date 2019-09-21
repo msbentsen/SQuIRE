@@ -1458,7 +1458,7 @@ def maxfraction(Read_ID,TE_dict,RepCalc_dict): #calculate new likelihoods and co
 def sort_coord(infile, outfile,chrcol,startcol,debug, tempfolder, pthreads):
 	chrfieldsort = "-k" + str(chrcol) + "," + str(chrcol)
 	startfieldsort = "-k" + str(startcol) + "," + str(startcol) + "n"
-	sort_command_list = ["sort", chrfieldsort, startfieldsort, "-T", tempfolder, "--parallel", pthreads, infile, ">", outfile]
+	sort_command_list = ["sort", chrfieldsort, startfieldsort, "-T", tempfolder, "--parallel", str(pthreads), infile, ">", outfile]
 	sort_command = " ".join(sort_command_list)
 	sp.check_call(["/bin/sh", "-c", sort_command])
 	if not debug:
@@ -1476,7 +1476,7 @@ def sort_coord_header(infile, outfile,chrcol,startcol,debug):
 def sort_counts(tempfile,headerfile,countsfile, field, debug, tempfolder, pthreads):
 	sorted_countsfile = tempfile + ".sorted"
 	field_command = str(field) + "," + str(field) + "rn"
-	sort_command_list = ["sort","-k", field_command, "-T", tempfolder, "--parallel", pthreads, tempfile, ">", sorted_countsfile]
+	sort_command_list = ["sort","-k", field_command, "-T", tempfolder, "--parallel", str(pthreads), tempfile, ">", sorted_countsfile]
 	sort_command = " ".join(sort_command_list)
 	sp.check_call(["/bin/sh", "-c", sort_command])
 	catcommand_list = ["cat", headerfile, sorted_countsfile, ">",countsfile ] #combines multi_aligned reads
