@@ -386,7 +386,7 @@ def reduce_reads(read_file, new_readfile, debug):
 
 						if linebuffer_i == buffersize:
 							outfile.writelines("\n".join(linebuffer_lst) + "\n")
-							linebuffer_lst = []
+							linebuffer_lst = [""]*buffersize
 							linebuffer_i = 0
 						
 			#end of loop
@@ -394,7 +394,7 @@ def reduce_reads(read_file, new_readfile, debug):
 			prev.line = "\t".join(prev.line_split)
 			linebuffer_lst[linebuffer_i] = prev.line
 
-			outfile.writelines("\n".join(linebuffer_lst[:linebuffer_i+1]) + "\n")
+			outfile.writelines("\n".join(linebuffer_lst[:linebuffer_i]) + "\n")
 
 	if not debug:
 		os.unlink(read_file)
@@ -642,11 +642,11 @@ def merge_coords(paired_file, merged_paired, debug): #combine coordinates for pa
 
 			if linebuffer_i == buffersize:
 				outfile.writelines("\n".join(linebuffer_lst) + "\n")
-				linebuffer_lst = []
+				linebuffer_lst = [""]*buffersize
 				linebuffer_i = 0
 			
 		#Write last lines
-		outfile.writelines("\n".join(linebuffer_lst[:linebuffer_i+1]) + "\n")	
+		outfile.writelines("\n".join(linebuffer_lst[:linebuffer_i]) + "\n")	
 
 	outfile.close()
 	#infile.close()
