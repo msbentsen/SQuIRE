@@ -325,7 +325,7 @@ def is_paired(bamfile,basename,tempfolder,debug):
 	return paired
 
 
-def find_properpair(paired_bam, proper,nonproper):
+def find_properpair(paired_bam, proper, nonproper, threads):
 	##### FILTER INTO CONCORDANT AND DISCORDANT/SINGLE READS ####
 	#-b: output in BAM format
 	#-h: keep header
@@ -333,27 +333,33 @@ def find_properpair(paired_bam, proper,nonproper):
 	#-F4: skip unmapped reads (bit flag = 4)
 	#-f2 = keep proper pair
 	#-F2 = discard proper pair
-	samtoolscommand_list = ["samtools","view","-bf2", "-o", proper, paired_bam]
+	samtoolscommand_list = ["samtools","view","-bf2", "-@", str(threads), "-o", proper, paired_bam]
 	samtoolscommand = " ".join(samtoolscommand_list)
 	sp.check_call(["/bin/sh", "-c", samtoolscommand])
-	samtoolscommand_list = ["samtools","view","-bF2", "-o", nonproper, paired_bam]
+
+	samtoolscommand_list = ["samtools","view","-bF2", "-@", str(threads), "-o", nonproper, paired_bam]
 	samtoolscommand = " ".join(samtoolscommand_list)
 	sp.check_call(["/bin/sh", "-c", samtoolscommand])
 
 def split_paired(paired_bed, paired_bed1, paired_bed2,debug):
 	#separate read 1 and read2 into separate files
-	awkcommand_list = ["awk","'$4 ~ v'","v='/1'", paired_bed,">", paired_bed1]
+	awkcommand_list = ["awk","'$4 ~ v'","v='/1'", paired_bed, ">", paired_bed1]
 	awkcommand = " ".join(awkcommand_list)
 	sp.check_call(["/bin/sh", "-c", awkcommand])
-	awkcommand_list = ["awk","'$4 ~ v'","v='/2'", paired_bed,">", paired_bed2]
+	awkcommand_list = ["awk","'$4 ~ v'","v='/2'", paired_bed ,">", paired_bed2]
 	awkcommand = " ".join(awkcommand_list)
 	sp.check_call(["/bin/sh", "-c", awkcommand])
 	if not debug:
 		os.unlink(paired_bed)
 
-def reduce_reads(read_file,new_readfile,debug):
+def reduce_reads(read_file, new_readfile, debug):
 	#Find reads aligned to same position but different TE_IDs (overlapping flanks) and merge
+	
 	prev = False
+
+	buffersize=100000
+	linebuffer_lst = [""]*buffersize
+	linebuffer_i = 0
 	with open(read_file,'r') as infile:
 		with open(new_readfile,'w') as outfile:
 			for line in infile:
@@ -365,19 +371,31 @@ def reduce_reads(read_file,new_readfile,debug):
 				else:
 					current = bedline(line)
 					current.TE_ID = current.line_split[15]
-					if current.Read_ID == prev.Read_ID and current.Read_chr == prev.Read_chr and current.Read_geno_start==prev.Read_geno_start and current.Read_geno_stop == prev.Read_geno_stop and current.Read_strand == prev.Read_strand:
+					if current.Read_ID == prev.Read_ID and current.Read_chr == prev.Read_chr and current.Read_geno_start == prev.Read_geno_start and current.Read_geno_stop == prev.Read_geno_stop and current.Read_strand == prev.Read_strand:
 						if current.TE_ID != prev.TE_ID:
 							prev_TE_ID = prev_TE_ID + "&" + current.TE_ID
 					else:
 						prev.line_split[15]  = prev_TE_ID
 						prev.line = "\t".join(prev.line_split)
-						outfile.writelines(prev.line + "\n")
-						prev= current
+						prev = current
 						prev_TE_ID = current.TE_ID
-	#end of loop
+
+						#Decide whether to write 
+						linebuffer_lst[linebuffer_i] = prev.line
+						linebuffer_i += 1
+
+						if linebuffer_i == buffersize:
+							outfile.writelines("\n".join(linebuffer_lst) + "\n")
+							linebuffer_lst = []
+							linebuffer_i = 0
+						
+			#end of loop
 			prev.line_split[15]  = prev_TE_ID
 			prev.line = "\t".join(prev.line_split)
-			outfile.writelines(prev.line + "\n")
+			linebuffer_lst[linebuffer_i] = prev.line
+
+			outfile.writelines("\n".join(linebuffer_lst[:linebuffer_i+1]) + "\n")
+
 	if not debug:
 		os.unlink(read_file)
 
@@ -483,10 +501,10 @@ def match_reads(R1, R2, strandedness, matched_file,unmatched_file1,unmatched_fil
 	sp.check_call(["/bin/sh","-c",roundcommand])
 
 	#create new read to join on that is read/chro
-	newreadcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $4 "/" $1 "/" $11 "/" $6}'""", rounded_1_v1,"|", "sort -k12 -T ", tempfolder, " >", newread_1_v1]
+	newreadcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $4 "/" $1 "/" $11 "/" $6}'""", rounded_1_v1,"|", "sort -k12 -T ", tempfolder, ">", newread_1_v1]
 	newreadcommand=" ".join(newreadcommand_list)
 	sp.check_call(["/bin/sh","-c",newreadcommand])
-	newreadcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $4 "/" $1 "/" $11 "/" $6}'""",  rounded_2_v1,"|", "sort -k12 -T ", tempfolder, " >", newread_2_v1]
+	newreadcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $4 "/" $1 "/" $11 "/" $6}'""",  rounded_2_v1,"|", "sort -k12 -T ", tempfolder, ">", newread_2_v1]
 	newreadcommand=" ".join(newreadcommand_list)
 	sp.check_call(["/bin/sh","-c",newreadcommand])
 
@@ -528,10 +546,10 @@ def match_reads(R1, R2, strandedness, matched_file,unmatched_file1,unmatched_fil
 	roundcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $2/100000}'""", """OFMT='%.f'""", unmatched_file2_v1, ">", rounded_2_v2]
 	roundcommand=" ".join(roundcommand_list)
 	sp.check_call(["/bin/sh","-c",roundcommand])
-	newreadcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $4 "/" $1 "/" $11 "/" $6}'""", rounded_1_v2,"|", "sort -k12", ">", newread_1_v2]
+	newreadcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $4 "/" $1 "/" $11 "/" $6}'""", rounded_1_v2,"|", "sort -k12 -T ", tempfolder, ">", newread_1_v2]
 	newreadcommand=" ".join(newreadcommand_list)
 	sp.check_call(["/bin/sh","-c",newreadcommand])
-	newreadcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $4 "/" $1 "/" $11 "/" $6}'""",  rounded_2_v2,"|", "sort -k12", ">", newread_2_v2]
+	newreadcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'", """'{print $0, $4 "/" $1 "/" $11 "/" $6}'""",  rounded_2_v2,"|", "sort -k12 -T ", tempfolder, ">", newread_2_v2]
 	newreadcommand=" ".join(newreadcommand_list)
 	sp.check_call(["/bin/sh","-c",newreadcommand])
 	#use join not awk because awk only takes 1st hit with shared value to find match
@@ -551,12 +569,13 @@ def match_reads(R1, R2, strandedness, matched_file,unmatched_file1,unmatched_fil
 	catcommand_list = ["cat", matched_file_v1, matched_file_v2, ">", matched_file ] #combines multi_aligned reads
 	catcommand = " ".join(catcommand_list)
 	sp.check_call(["/bin/sh","-c",catcommand])
-	awkcommand_list = ["awk","-v", "OFS='\\t'","-v", "FS='\\t'", """'FNR==NR{a[$4]++;next}!a[$4]{print $0}'""", matched_file,R1,   ">", unmatched_file1] #writes lines in read1 that is not in matched file -> unmatched
+	awkcommand_list = ["awk","-v", "OFS='\\t'","-v", "FS='\\t'", """'FNR==NR{a[$4]++;next}!a[$4]{print $0}'""", matched_file,R1,  ">", unmatched_file1] #writes lines in read1 that is not in matched file -> unmatched
 	awkcommand = " ".join(awkcommand_list)
 	sp.check_call(["/bin/sh","-c",awkcommand])
 	awkcommand_list = ["awk", "-v", "OFS='\\t'","-v", "FS='\\t'","""'FNR==NR{a[$4]++;next}!a[$4]{print $0}'""", matched_file, R2,  ">", unmatched_file2] #writes lines in read2 that is not in matched file -> unmatched
 	awkcommand = " ".join(awkcommand_list)
 	sp.check_call(["/bin/sh","-c",awkcommand])
+
 	if not debug:
 		os.unlink(rounded_1_v1)
 		os.unlink(rounded_2_v1)
@@ -576,10 +595,16 @@ def match_reads(R1, R2, strandedness, matched_file,unmatched_file1,unmatched_fil
 		os.unlink(R2)
 
 
+def merge_coords(paired_file, merged_paired, debug): #combine coordinates for paired reads
 
-def merge_coords(paired_file,merged_paired,debug): #combine coordinates for paired reads
 	outfile = open(merged_paired,'w')
+
 	with open(paired_file,'r') as infile:
+
+		buffersize = 100000
+		linebuffer_lst = [""]*buffersize
+		linebuffer_i = 0
+
 		for line in infile:
 			line = line.rstrip()
 			line_split = line.split("\t")
@@ -611,9 +636,20 @@ def merge_coords(paired_file,merged_paired,debug): #combine coordinates for pair
 			new_proper = "R1" + "_" + R1_proper + ":" + "R2" + "_" + R2_proper
 			insert_size=abs(int(new_end) - int(new_start))
 			new_line = "\t".join([chrom, new_start,new_end,read_ID,new_score,strand,new_TE_ID,new_proper,new_read,new_uniq])
-			outfile.writelines(new_line + "\n")
+			#outfile.writelines(new_line + "\n")
+			linebuffer_lst[linebuffer_i] = new_line
+			linebuffer_i += 1
+
+			if linebuffer_i == buffersize:
+				outfile.writelines("\n".join(linebuffer_lst) + "\n")
+				linebuffer_lst = []
+				linebuffer_i = 0
+			
+		#Write last lines
+		outfile.writelines("\n".join(linebuffer_lst[:linebuffer_i+1]) + "\n")	
+
 	outfile.close()
-	infile.close()
+	#infile.close()
 	if not debug:
 		os.unlink(paired_file)
 
@@ -922,6 +958,7 @@ class RepCalc(object):
 		elif self.start_minus:
 			self.start_tot = self.start_minus
 		self.stop_tot = max(self.stop_plus, self.stop_minus)
+
 	def calcuniqRep(self):
 		self.efflength_plus = len(self.uniq_starts_plus)
 		self.efflength_minus = len(self.uniq_starts_minus)
@@ -930,6 +967,7 @@ class RepCalc(object):
 		if self.efflength_minus:
 			self.uniq_minus_perTagkb = self.uniq_fragment_minus/(int(self.efflength_minus)/1000)
 		self.uniqcounts=self.uniq_plus + self.uniq_minus
+
 	def calcmultiRep(self,iteration):
 		self.length_plus = self.stop_plus - self.start_plus
 		self.length_minus = self.stop_minus - self.start_minus
@@ -1043,9 +1081,11 @@ class RepCalc(object):
 			self.stop_tot = self.stop_plus
 		elif self.stop_minus:
 			self.stop_tot = self.stop_minus
+
 	def calc_total_reads(self):
 		self.total_reads_plus = len(self.read_list_plus)
 		self.total_reads_minus = len(self.read_list_minus)
+
 	def writeRep(self,aligned_libsize, counts_file,basename,strandedness,iteration):
 		if iteration ==0:
 			self.total_1_plus = self.uniq_plus + self.multi_plus + self.multi_u_plus
@@ -1415,10 +1455,10 @@ def maxfraction(Read_ID,TE_dict,RepCalc_dict): #calculate new likelihoods and co
 		avg_change = changed_likelihood/changed_TEs
 	return avg_change
 
-def sort_coord(infile, outfile,chrcol,startcol,debug):
+def sort_coord(infile, outfile,chrcol,startcol,debug, tempfolder, pthreads):
 	chrfieldsort = "-k" + str(chrcol) + "," + str(chrcol)
 	startfieldsort = "-k" + str(startcol) + "," + str(startcol) + "n"
-	sort_command_list = ["sort",chrfieldsort,startfieldsort, infile, ">", outfile]
+	sort_command_list = ["sort", chrfieldsort, startfieldsort, "-T", tempfolder, "--parallel", pthreads, infile, ">", outfile]
 	sort_command = " ".join(sort_command_list)
 	sp.check_call(["/bin/sh", "-c", sort_command])
 	if not debug:
@@ -1433,10 +1473,10 @@ def sort_coord_header(infile, outfile,chrcol,startcol,debug):
 	if not debug:
 		os.unlink(infile)
 
-def sort_counts(tempfile,headerfile,countsfile, field,debug):
+def sort_counts(tempfile,headerfile,countsfile, field, debug, tempfolder, pthreads):
 	sorted_countsfile = tempfile + ".sorted"
 	field_command = str(field) + "," + str(field) + "rn"
-	sort_command_list = ["sort","-k",field_command, tempfile, ">", sorted_countsfile]
+	sort_command_list = ["sort","-k", field_command, "-T", tempfolder, "--parallel", pthreads, tempfile, ">", sorted_countsfile]
 	sort_command = " ".join(sort_command_list)
 	sp.check_call(["/bin/sh", "-c", sort_command])
 	catcommand_list = ["cat", headerfile, sorted_countsfile, ">",countsfile ] #combines multi_aligned reads
@@ -1569,7 +1609,7 @@ def main(**kwargs):
 	outgtf_ref_temp =  make_tempfile(basename, "outgtf_ref", tempfolder)
 	abund_ref_temp = outgtf_ref_temp.replace("outgtf","outabund")
 	Stringtie(bamfile,outfolder,basename,strandedness,pthreads,ingtf, verbosity,outgtf_ref_temp) 
-	sort_coord(outgtf_ref_temp,outgtf_ref,1,4,debug)
+	sort_coord(outgtf_ref_temp,outgtf_ref,1,4,debug, tempfolder, pthreads)
 	sort_coord_header(abund_ref_temp,abund_ref,3,5,debug)	       
 	genename_dict={}
 	filter_abund(abund_ref,genename_dict,False)
@@ -1589,24 +1629,27 @@ def main(**kwargs):
 	counts_file_header.close()
 
 
-#####CREATE TEMPFILES #######
+	#####CREATE TEMPFILES #######
 	if verbosity:
 		print("Creating unique and multiple alignment bedfiles "+ str(datetime.now())  + "\n",file = sys.stderr)
 
 	if not paired_end:
 		single_bam = bamfile
+
 		if verbosity:
 			print("Intersecting bam file with TE bedfile "+ str(datetime.now())  + "\n",file = sys.stderr)
 		#intersect bam files with TE bed files
 		single_bed_tempfile1 = make_tempfile(basename,"single_bed_1", tempfolder)
 		intersect_flank(single_bam, rmsk_bed, single_bed_tempfile1,debug)
+
 		if verbosity:
 			print("Combining adjacent TEs with same read alignment "+ str(datetime.now())  + "\n",file = sys.stderr)
 		#reduce reads   #Find reads aligned to same position but different TE_IDs (overlapping flanks) and merge
 		single_reduced_tempfile1 = make_tempfile(basename,"single_reduced_1", tempfolder)
 		single_reduced_tempfile1_sorted =single_reduced_tempfile1  + "_sorted"
-		sort_coord(single_bed_tempfile1,single_reduced_tempfile1_sorted,1,2,debug)
+		sort_coord(single_bed_tempfile1,single_reduced_tempfile1_sorted,1,2,debug, tempfolder, pthreads)
 		reduce_reads(single_reduced_tempfile1_sorted, single_reduced_tempfile1,debug)
+
 		if verbosity:
 			print("Getting genomic coordinates of read"+ str(datetime.now())  + "\n",file = sys.stderr)
 		#get genomic coordinates and RNA strand for all alignments
@@ -1629,7 +1672,6 @@ def main(**kwargs):
 
 		find_uniq(single_labeled_tempfile2,first_tempfile1,unique_tempfile1, multi_tempfile1,debug)
 
-
 		#label uniq, multi, or single
 		multi_bed = make_tempfile(basename,"multi_bed", tempfolder)
 		unique_bed = make_tempfile(basename,"unique_bed", tempfolder)
@@ -1646,15 +1688,15 @@ def main(**kwargs):
 		paired_bam = bamfile
 		proper_bam = make_tempfile(basename,"proper_bam", tempfolder)
 		nonproper_bam = make_tempfile(basename,"nonproper_bam", tempfolder)
-		find_properpair(paired_bam, proper_bam,nonproper_bam)
+		find_properpair(paired_bam, proper_bam,nonproper_bam, pthreads)
 
 		if verbosity:
 			print("Intersecting bam files with TE bedfile "+ str(datetime.now())  + "\n",file = sys.stderr)
 
 		proper_bed = make_tempfile(basename,"proper_bed", tempfolder)
 		nonproper_bed = make_tempfile(basename,"nonproper_bed", tempfolder)
-		intersect_flank(proper_bam, rmsk_bed, proper_bed,debug)
-		intersect_flank(nonproper_bam, rmsk_bed, nonproper_bed,debug)
+		intersect_flank(proper_bam, rmsk_bed, proper_bed, debug)
+		intersect_flank(nonproper_bam, rmsk_bed, nonproper_bed, debug)
 
 		proper_labeled_tempfile = make_tempfile(basename,"proper_labeled", tempfolder)
 		nonproper_labeled_tempfile = make_tempfile(basename,"nonproper_labeled", tempfolder)
@@ -1674,13 +1716,14 @@ def main(**kwargs):
 		if not debug:
 			os.unlink(proper_bam)
 			os.unlink(nonproper_bam)
+
 		#reduce reads   #Find reads aligned to same position but different TE_IDs (overlapping flanks) and merge
 		if verbosity:
-			print("Combining adjacent TEs with same read alignment "+ str(datetime.now())  + "\n",file = sys.stderr)
+			print("Combining adjacent TEs with same read alignment " + str(datetime.now())  + "\n",file = sys.stderr)
 		paired_reduced_tempfile1 = make_tempfile(basename,"paired_reduced_1", tempfolder)
 		paired_reduced_tempfile2 = make_tempfile(basename,"paired_reduced_2", tempfolder)
-		sort_coord(paired_bed_tempfile1,paired_bed_tempfile1_sorted,1,2,debug)
-		sort_coord(paired_bed_tempfile2,paired_bed_tempfile2_sorted,1,2,debug)
+		sort_coord(paired_bed_tempfile1,paired_bed_tempfile1_sorted,1,2,debug, tempfolder, pthreads)
+		sort_coord(paired_bed_tempfile2,paired_bed_tempfile2_sorted,1,2,debug, tempfolder, pthreads)
 
 		reduce_reads(paired_bed_tempfile1_sorted, paired_reduced_tempfile1,debug)
 		reduce_reads(paired_bed_tempfile2_sorted, paired_reduced_tempfile2,debug)
@@ -1945,7 +1988,7 @@ def main(**kwargs):
 	#Close dictionaries from memory
 	counts_temp.close()
 
-	sort_counts(counts_temp.name,counts_file_header.name,countsfilepath,5,debug) #sort on 5th column (fpkm)
+	sort_counts(counts_temp.name,counts_file_header.name,countsfilepath,5,debug, tempfolder, pthreads) #sort on 5th column (fpkm)
 	read_locdict.clear()
 	RepCalc_dict.clear()
 
@@ -1971,7 +2014,7 @@ def main(**kwargs):
 		copiesfile.close()
 		temp_subF.close()
 
-		sort_counts(temp_subF.name,subF_file_header.name,subF_filepath,6,debug) #Sort by 7th field (multi)
+		sort_counts(temp_subF.name,subF_file_header.name,subF_filepath,6,debug, tempfolder, pthreads) #Sort by 7th field (multi)
 
 		if not debug:
 			os.unlink(unique_bed)
